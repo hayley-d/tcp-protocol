@@ -1,8 +1,18 @@
-use std::net::IpAddr;
+use std::collections::HashMap;
+use std::net::{IpAddr, Ipv4Addr};
+
+use tcp_protocol::tcp;
 
 extern crate tun_tap;
 
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
+pub struct Quad {
+    src: (Ipv4Addr, u16),
+    dest: (Ipv4Addr, u16),
+}
+
 fn main() -> std::io::Result<()> {
+    let connections: HashMap<Quad, tcp::State> = HashMap::new();
     // Create the Tun (logical NIC)
     let nic = tun_tap::Iface::new("tun0", tun_tap::Mode::Tun)?;
     let mut buffer: [u8; 1504] = [0; 1504];
@@ -37,8 +47,8 @@ fn main() -> std::io::Result<()> {
 
                 match etherparse::TcpHeaderSlice::from_slice(&buffer[4 + packet.slice().len()..]) {
                     Ok(p) => {
-                        let source: IpAddr = IpAddr::from(packet.source_addr());
-                        let destination: IpAddr = IpAddr::from(packet.destination_addr());
+                        let source: Ipv4Addr = Ipv4Addr::from(packet.source_addr());
+                        let destination: Ipv4Addr = Ipv4Addr::from(packet.destination_addr());
                         let port = p.destination_port();
 
                         eprintln!(
