@@ -27,15 +27,30 @@ fn main() -> std::io::Result<()> {
                     Err(_) => continue,
                 };
 
-                let source: IpAddr = IpAddr::from(packet.source_addr());
-                let destination: IpAddr = IpAddr::from(packet.destination_addr());
                 // IP level protocol
                 let protocol: u8 = packet.protocol().0;
 
-                eprintln!(
-                    "{} -> {} {} bytes of protocol {}",
-                    source, destination, payload_len, protocol
-                );
+                if protocol != 6 {
+                    // Not TCP
+                    continue;
+                }
+
+                match etherparse::TcpHeaderSlice::from_slice(&buffer[4 + packet.slice().len()..]) {
+                    Ok(p) => {
+                        let source: IpAddr = IpAddr::from(packet.source_addr());
+                        let destination: IpAddr = IpAddr::from(packet.destination_addr());
+                        let port = p.destination_port();
+
+                        eprintln!(
+                            "{} -> {} {} bytes of tcp to port {}",
+                            source, destination, payload_len, port
+                        );
+                    }
+                    Err(_) => {
+                        eprintln!("Ignoring weird tcp packet");
+                        continue;
+                    }
+                }
             }
             Err(_) => {
                 eprintln!("Ignore weird packet");
