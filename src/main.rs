@@ -12,7 +12,7 @@ pub struct Quad {
 }
 
 fn main() -> std::io::Result<()> {
-    let connections: HashMap<Quad, tcp::State> = HashMap::new();
+    let mut connections: HashMap<Quad, tcp::State> = HashMap::new();
     // Create the Tun (logical NIC)
     let nic = tun_tap::Iface::new("tun0", tun_tap::Mode::Tun)?;
     let mut buffer: [u8; 1504] = [0; 1504];
@@ -31,25 +31,38 @@ fn main() -> std::io::Result<()> {
         }
 
         match etherparse::Ipv4HeaderSlice::from_slice(&buffer[4..bytes]) {
-            Ok(packet) => {
-                let payload_len = match packet.payload_len() {
+            Ok(ip_header) => {
+                let payload_len = match ip_header.payload_len() {
                     Ok(len) => len,
                     Err(_) => continue,
                 };
 
                 // IP level protocol
-                let protocol: u8 = packet.protocol().0;
+                let protocol: u8 = ip_header.protocol().0;
 
                 if protocol != 6 {
                     // Not TCP
                     continue;
                 }
 
-                match etherparse::TcpHeaderSlice::from_slice(&buffer[4 + packet.slice().len()..]) {
-                    Ok(p) => {
-                        let source: Ipv4Addr = Ipv4Addr::from(packet.source_addr());
-                        let destination: Ipv4Addr = Ipv4Addr::from(packet.destination_addr());
-                        let port = p.destination_port();
+                let ip_header_size = ip_header.slice().len();
+                match etherparse::TcpHeaderSlice::from_slice(&buffer[4 + ip_header.slice().len()..])
+                {
+                    Ok(tcp_header) => {
+                        let source: Ipv4Addr = Ipv4Addr::from(ip_header.source_addr());
+                        let destination: Ipv4Addr = Ipv4Addr::from(ip_header.destination_addr());
+                        let port = tcp_header.destination_port();
+                        let src_port = tcp_header.source_port();
+
+                        let tcp_header_size = tcp_header.slice().len();
+                        let data = 4 + ip_header_size + tcp_header_size;
+                        connections
+                            .entry(Quad {
+                                src: (source, src_port),
+                                dest: (destination, port),
+                            })
+                            .or_default()
+                            .on_packet(ip_header, tcp_header, &buffer[data..]);
 
                         eprintln!(
                             "{} -> {} {} bytes of tcp to port {}",
